@@ -60,10 +60,8 @@ def main() -> None:
     notifier = Notifier(cfg)
 
     # --- Dashboard ---
-    dash = None
-    if db is not None:
-        dash = dashboard_api.Server(db, cfg.dashboard_port)
-        dash.start()
+    dash = dashboard_api.Server(db, cfg.dashboard_port)
+    dash.start()
 
     # --- Capture ---
     sniffer = Sniffer(cfg)
@@ -95,6 +93,7 @@ def main() -> None:
             continue
 
         total_packets += 1
+        dashboard_api.inc_packets()
 
         if args.verbose:
             now = time.time()
@@ -144,7 +143,7 @@ def main() -> None:
 
     logger.info("Shutting down…")
     sniffer.stop()
-    if dash:
+    if dash is not None:
         dash.stop()
     if db:
         db.close()
