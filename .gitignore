@@ -11,5 +11,11 @@ config.local.json
 captures/
 logs/
 
-# Go
-vendor/
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/

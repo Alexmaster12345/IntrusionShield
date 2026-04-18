@@ -1,22 +1,16 @@
-FROM golang:1.22-alpine AS builder
+FROM python:3.12-slim
 
-RUN apk add --no-cache gcc musl-dev libpcap-dev
-
-WORKDIR /build
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o intrusion-shield .
-
-# ────────────────────────────────────────────
-FROM alpine:3.19
-
-RUN apk add --no-cache libpcap ca-certificates tzdata
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpcap-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=builder /build/intrusion-shield .
-COPY rules/ ./rules/
 
-ENTRYPOINT ["./intrusion-shield"]
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+ENTRYPOINT ["python", "main.py"]
 CMD ["-config", "config.json"]

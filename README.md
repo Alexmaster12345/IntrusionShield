@@ -64,23 +64,22 @@ A high-performance Network Intrusion Detection System (NIDS) written in Go.
 ## Quick Start
 
 ### Prerequisites
-- Go ≥ 1.22
+- Python ≥ 3.10
 - libpcap (`libpcap-devel` on RHEL/Fedora, `libpcap-dev` on Debian/Ubuntu)
 - Root/CAP_NET_RAW for live capture
 
-### Build
+### Install
 
 ```bash
 git clone https://github.com/Alexmaster12345/IntrusionShield.git
 cd IntrusionShield
-go mod download
-CGO_ENABLED=1 go build -o intrusion-shield .
+pip install -r requirements.txt
 ```
 
 ### Run (CLI sniffer mode)
 
 ```bash
-sudo ./intrusion-shield -iface eth0 -verbose
+sudo python main.py -iface eth0 -verbose
 ```
 
 ### Run with config
@@ -88,7 +87,7 @@ sudo ./intrusion-shield -iface eth0 -verbose
 ```bash
 cp config.example.json config.json
 # Edit interface, DB URL, alert webhooks
-sudo ./intrusion-shield -config config.json
+sudo python main.py -config config.json
 ```
 
 ### Docker Compose (full stack)
@@ -143,49 +142,50 @@ alert tcp any any -> any any (msg:"Base64 encoded payload"; content:"base64"; no
 
 ```
 IntrusionShield/
-├── main.go                  # Orchestration + CLI flags
-├── config/config.go         # Config struct + JSON load/save
+├── main.py                      # Orchestration + CLI flags
+├── requirements.txt             # Python dependencies
+├── config/config.py             # Config dataclass + JSON load/save
 ├── capture/
-│   ├── sniffer.go           # libpcap live capture + pcap write
-│   └── filters.go           # BPF filter builder
+│   ├── sniffer.py               # Scapy live capture + pcap write
+│   └── filters.py               # BPF filter builder
 ├── parser/
-│   ├── packet.go            # Normalized Packet type + Parse()
-│   ├── ip.go                # IPv4/IPv6 layer
-│   ├── tcp.go               # TCP flags + payload
-│   ├── udp.go               # UDP payload
-│   ├── icmp.go              # ICMPv4/ICMPv6
-│   ├── dns.go               # DNS query/answer parsing
-│   └── http.go              # HTTP/1.x layer-7 parsing
+│   ├── packet.py                # Normalized Packet dataclass + parse()
+│   ├── ip.py                    # IPv4/IPv6 layer
+│   ├── tcp.py                   # TCP flags + payload
+│   ├── udp.py                   # UDP payload
+│   ├── icmp.py                  # ICMPv4/ICMPv6
+│   ├── dns.py                   # DNS query/answer parsing
+│   └── http.py                  # HTTP/1.x layer-7 parsing
 ├── detection/
-│   ├── engine.go            # Signature matching pipeline + Alert type
-│   ├── rules.go             # Snort-like rules file parser
-│   ├── signatures.go        # 16 built-in signatures
-│   └── anomaly.go           # Statistical anomaly detector
+│   ├── engine.py                # Signature matching pipeline + Alert dataclass
+│   ├── rules.py                 # Snort-like rules file parser
+│   ├── signatures.py            # 16 built-in signatures
+│   └── anomaly.py               # Statistical anomaly detector
 ├── storage/
-│   ├── db.go                # pgxpool connection + migrations + queries
-│   └── models.go            # AlertRecord, AnomalyRecord, PacketRecord
+│   ├── db.py                    # psycopg2 connection + migrations + queries
+│   └── models.py                # AlertRecord, AnomalyRecord, PacketRecord
 ├── alert/
-│   ├── notifier.go          # Multi-channel dispatcher
-│   ├── slack.go             # Slack webhook
-│   ├── email.go             # SMTP email
-│   ├── webhook.go           # Generic HTTP webhook (JSON)
-│   └── telegram.go          # Telegram Bot API
+│   ├── notifier.py              # Multi-channel dispatcher
+│   ├── slack.py                 # Slack webhook
+│   ├── email_notifier.py        # SMTP email
+│   ├── webhook.py               # Generic HTTP webhook (JSON)
+│   └── telegram.py              # Telegram Bot API
 ├── dashboard/
-│   └── api.go               # REST API + embedded status HTML
+│   └── api.py                   # Flask REST API + embedded status HTML
 ├── rules/
-│   └── default.rules        # Custom rules (empty by default)
-├── Dockerfile               # Multi-stage build (Alpine)
-└── docker-compose.yml       # NIDS + PostgreSQL + Grafana
+│   └── default.rules            # Custom rules (empty by default)
+├── Dockerfile                   # Python 3.12-slim image
+└── docker-compose.yml           # NIDS + PostgreSQL + Grafana
 ```
 
 ## Tech Stack
 
 | Layer          | Technology                         |
 |----------------|------------------------------------|
-| Language       | Go 1.22+                           |
-| Packet Capture | gopacket + libpcap                 |
-| Storage        | PostgreSQL 16 via pgx/v5           |
-| HTTP API       | gorilla/mux                        |
+| Language       | Python 3.10+                       |
+| Packet Capture | Scapy + libpcap                    |
+| Storage        | PostgreSQL 16 via psycopg2         |
+| HTTP API       | Flask                              |
 | Alerting       | Slack / Email / Telegram / Webhook |
 | Deployment     | Docker + Docker Compose            |
 
