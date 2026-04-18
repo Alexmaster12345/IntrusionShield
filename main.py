@@ -71,8 +71,7 @@ def main() -> None:
     stop_event = threading.Event()
 
     def _shutdown(sig, frame):
-        logger.info("Signal %s received — shutting down", sig)
-        stop_event.set()
+        stop_event.set()  # no I/O here — avoids reentrant stdout on Ctrl+C
 
     signal.signal(signal.SIGINT, _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
@@ -137,6 +136,7 @@ def main() -> None:
             except Exception:
                 break
 
+    logger.info("Shutting down…")
     sniffer.stop()
     if dash:
         dash.stop()
