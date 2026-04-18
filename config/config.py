@@ -22,7 +22,9 @@ class Config:
     window_size: int = 100
 
     # Storage
-    database_url: str = "postgresql://intrusion:shield@localhost:5432/intrusion_shield"
+    database_url: str = field(default_factory=lambda: os.getenv(
+        "DATABASE_URL", "postgresql://intrusion:changeme@localhost:5432/intrusion_shield"
+    ))
 
     # Alerting
     slack_webhook: str = ""

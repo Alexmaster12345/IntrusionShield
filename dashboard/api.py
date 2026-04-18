@@ -277,6 +277,17 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .card.orange::before{background:linear-gradient(90deg,var(--orange),transparent)}
 .card.red::before{background:linear-gradient(90deg,var(--red),transparent)}
 .card.green::before{background:linear-gradient(90deg,var(--green),transparent)}
+.card{cursor:pointer;transition:transform .15s,box-shadow .15s,border-color .15s}
+.card:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.card.blue:hover{border-color:rgba(88,166,255,.5)}
+.card.orange:hover{border-color:rgba(240,136,62,.5)}
+.card.red:hover{border-color:rgba(248,81,73,.5)}
+.card.green:hover{border-color:rgba(63,185,80,.5)}
+.card.card-active{border-width:2px}
+.card.blue.card-active{border-color:var(--primary);box-shadow:0 0 0 3px rgba(88,166,255,.15)}
+.card.orange.card-active{border-color:var(--orange);box-shadow:0 0 0 3px rgba(240,136,62,.15)}
+.card.red.card-active{border-color:var(--red);box-shadow:0 0 0 3px rgba(248,81,73,.15)}
+.card.green.card-active{border-color:var(--green);box-shadow:0 0 0 3px rgba(63,185,80,.15)}
 .card-icon{font-size:1.4rem;margin-bottom:.5rem;opacity:.85}
 .card-val{font-size:1.9rem;font-weight:700;line-height:1;margin-bottom:.3rem}
 .card.blue .card-val{color:var(--primary)}
@@ -366,10 +377,22 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="page-sub" id="last-update">Loading…</div>
     </div>
     <div class="cards">
-      <div class="card blue"><div class="card-icon">📦</div><div class="card-val" id="s-pkts">—</div><div class="card-label">Packets Captured</div><div class="card-rate" id="s-rate">— pkt/s</div></div>
-      <div class="card orange"><div class="card-icon">🚨</div><div class="card-val" id="s-alerts">—</div><div class="card-label">Total Alerts</div></div>
-      <div class="card red"><div class="card-icon">🔴</div><div class="card-val" id="s-high">—</div><div class="card-label">High Severity</div></div>
-      <div class="card green"><div class="card-icon">🕐</div><div class="card-val" id="s-hour">—</div><div class="card-label">Alerts Last Hour</div></div>
+      <div class="card blue" id="card-all" onclick="cardFilter('all')" title="Show all alerts">
+        <div class="card-icon">📦</div><div class="card-val" id="s-pkts">—</div>
+        <div class="card-label">Packets Captured</div><div class="card-rate" id="s-rate">— pkt/s</div>
+      </div>
+      <div class="card orange" id="card-total" onclick="cardFilter('total')" title="Show all alerts">
+        <div class="card-icon">🚨</div><div class="card-val" id="s-alerts">—</div>
+        <div class="card-label">Total Alerts</div>
+      </div>
+      <div class="card red" id="card-high" onclick="cardFilter('high')" title="Show HIGH severity only">
+        <div class="card-icon">🔴</div><div class="card-val" id="s-high">—</div>
+        <div class="card-label">High Severity</div>
+      </div>
+      <div class="card green" id="card-hour" onclick="cardFilter('hour')" title="Show alerts from last hour">
+        <div class="card-icon">🕐</div><div class="card-val" id="s-hour">—</div>
+        <div class="card-label">Alerts Last Hour</div>
+      </div>
     </div>
     <div class="chart-card" style="margin-bottom:1rem">
       <div class="chart-title" style="display:flex;justify-content:space-between;align-items:center">
@@ -447,6 +470,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 // ── State ──
 let allAlerts = [];
 let activeFilters = new Set();
+let activeCardFilter = 'all';
 let timelineChart, protoChart, sevChart, pktChart;
 
 // ── Navigation ──
@@ -455,6 +479,44 @@ function nav(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   event.currentTarget.classList.add('active');
+}
+
+// ── Card filter ──
+function cardFilter(mode) {
+  // Toggle off if clicking active card
+  activeCardFilter = (activeCardFilter === mode) ? 'all' : mode;
+  // Update card highlights
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('card-active'));
+  if (activeCardFilter !== 'all') {
+    const el = document.getElementById('card-' + activeCardFilter);
+    if (el) el.classList.add('card-active');
+  }
+  renderOverview();
+  setTimeout(() => {
+    document.getElementById('overview-alerts').closest('.table-card')
+      .scrollIntoView({behavior:'smooth', block:'nearest'});
+  }, 50);
+}
+
+function overviewFiltered() {
+  if (activeCardFilter === 'high')
+    return allAlerts.filter(x => x.Severity === 3);
+  if (activeCardFilter === 'hour') {
+    const cutoff = Date.now() - 3600 * 1000;
+    return allAlerts.filter(x => new Date(x.Timestamp).getTime() >= cutoff);
+  }
+  return allAlerts;
+}
+
+function renderOverview() {
+  const fa = overviewFiltered();
+  const labels = {high:'HIGH severity only', hour:'last hour', all:'all', total:'all'};
+  document.getElementById('alert-count').textContent =
+    fa.length + ' alert' + (fa.length !== 1 ? 's' : '') + ' — ' + (labels[activeCardFilter] || 'all');
+  const html = fa.length
+    ? fa.slice(0, 10).map(rowHTML).join('')
+    : '<tr><td colspan="6" class="empty">No matching alerts</td></tr>';
+  document.getElementById('overview-alerts').innerHTML = html;
 }
 
 // ── Filter ──
@@ -613,11 +675,7 @@ async function load() {
     // Live alerts
     const a = await fetch('/api/alerts/live').then(r => r.json());
     allAlerts = a || [];
-    document.getElementById('alert-count').textContent = allAlerts.length + ' alerts';
-    // Overview table (last 10)
-    const oh = allAlerts.slice(0, 10).map(rowHTML).join('') ||
-               '<tr><td colspan="6" class="empty">No alerts yet</td></tr>';
-    document.getElementById('overview-alerts').innerHTML = oh;
+    renderOverview();
     renderAlerts();
     // Severity chart
     const h = allAlerts.filter(x=>x.Severity===3).length;

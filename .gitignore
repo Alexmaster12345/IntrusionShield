@@ -6,6 +6,7 @@ intrusion-shield
 # Config with secrets
 config.json
 config.local.json
+.env
 
 # Capture output
 captures/
