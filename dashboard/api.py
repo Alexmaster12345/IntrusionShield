@@ -29,6 +29,10 @@ _timeline: Deque = deque(maxlen=3000)
 _top_sources: Dict[str, int] = defaultdict(int)
 # protocol counts
 _proto_counts: Dict[str, int] = defaultdict(int)
+# packet rate: deque of (unix_second, count) for last 60 seconds
+_pkt_per_sec: Deque = deque(maxlen=60)
+_pkt_current_tick: int = 0
+_pkt_current_count: int = 0
 
 
 def init(db: Optional[DB]) -> None:
@@ -37,8 +41,17 @@ def init(db: Optional[DB]) -> None:
 
 
 def inc_packets() -> None:
-    global _total_packets
+    global _total_packets, _pkt_current_tick, _pkt_current_count
     _total_packets += 1
+    tick = int(datetime.utcnow().timestamp())
+    with _lock:
+        if tick != _pkt_current_tick:
+            if _pkt_current_tick != 0:
+                _pkt_per_sec.append((_pkt_current_tick, _pkt_current_count))
+            _pkt_current_tick = tick
+            _pkt_current_count = 1
+        else:
+            _pkt_current_count += 1
 
 
 def add_alert(a: Alert) -> None:
@@ -160,6 +173,35 @@ def protocols():
     return jsonify(counts)
 
 
+@app.route("/api/packets/rate")
+def packets_rate():
+    """Per-second packet counts for the last 60 seconds."""
+    now = int(datetime.utcnow().timestamp())
+    with _lock:
+        history = list(_pkt_per_sec)
+        current_tick = _pkt_current_tick
+        current_count = _pkt_current_count
+
+    # Build a full 60-second array (0 for gaps)
+    buckets = {ts: cnt for ts, cnt in history}
+    if current_tick:
+        buckets[current_tick] = current_count
+
+    labels, values = [], []
+    for i in range(59, -1, -1):
+        ts = now - i
+        labels.append(f"-{i}s" if i > 0 else "now")
+        values.append(buckets.get(ts, 0))
+
+    current_rate = buckets.get(now, buckets.get(now - 1, 0))
+    return jsonify({
+        "labels": labels,
+        "values": values,
+        "current_rate": current_rate,
+        "total": _total_packets,
+    })
+
+
 @app.route("/")
 @app.route("/index.html")
 def index():
@@ -242,6 +284,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .card.red .card-val{color:var(--red)}
 .card.green .card-val{color:var(--green)}
 .card-label{font-size:.78rem;color:var(--muted)}
+.card-rate{font-size:.75rem;color:var(--primary);margin-top:.25rem;font-family:monospace}
 
 /* ── Charts row ── */
 .charts-row{display:grid;grid-template-columns:1fr 320px;gap:1rem;margin-bottom:1.5rem}
@@ -323,10 +366,17 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="page-sub" id="last-update">Loading…</div>
     </div>
     <div class="cards">
-      <div class="card blue"><div class="card-icon">📦</div><div class="card-val" id="s-pkts">—</div><div class="card-label">Packets Captured</div></div>
+      <div class="card blue"><div class="card-icon">📦</div><div class="card-val" id="s-pkts">—</div><div class="card-label">Packets Captured</div><div class="card-rate" id="s-rate">— pkt/s</div></div>
       <div class="card orange"><div class="card-icon">🚨</div><div class="card-val" id="s-alerts">—</div><div class="card-label">Total Alerts</div></div>
       <div class="card red"><div class="card-icon">🔴</div><div class="card-val" id="s-high">—</div><div class="card-label">High Severity</div></div>
       <div class="card green"><div class="card-icon">🕐</div><div class="card-val" id="s-hour">—</div><div class="card-label">Alerts Last Hour</div></div>
+    </div>
+    <div class="chart-card" style="margin-bottom:1rem">
+      <div class="chart-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Packets Captured — last 60 seconds</span>
+        <span id="pkt-rate-badge" style="font-size:.78rem;color:var(--primary);font-family:monospace;background:rgba(88,166,255,.1);padding:.2rem .6rem;border-radius:4px;border:1px solid rgba(88,166,255,.2)">0 pkt/s</span>
+      </div>
+      <div class="chart-wrap"><canvas id="pktChart"></canvas></div>
     </div>
     <div class="charts-row">
       <div class="chart-card">
@@ -397,7 +447,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 // ── State ──
 let allAlerts = [];
 let activeFilters = new Set();
-let timelineChart, protoChart, sevChart;
+let timelineChart, protoChart, sevChart, pktChart;
 
 // ── Navigation ──
 function nav(page) {
@@ -463,6 +513,30 @@ Chart.defaults.color = '#8b949e';
 Chart.defaults.borderColor = '#30363d';
 
 function initCharts() {
+  const pkCtx = document.getElementById('pktChart').getContext('2d');
+  pktChart = new Chart(pkCtx, {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      label: 'Packets/s',
+      data: [],
+      borderColor: 'rgba(88,166,255,.9)',
+      backgroundColor: 'rgba(88,166,255,.08)',
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.4,
+      fill: true,
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+        y: { beginAtZero: true, ticks: { font: { size: 10 }, stepSize: 1 } },
+      },
+      animation: { duration: 300 },
+    },
+  });
+
   const tCtx = document.getElementById('timelineChart').getContext('2d');
   timelineChart = new Chart(tCtx, {
     type: 'bar',
@@ -520,6 +594,19 @@ async function load() {
     document.getElementById('s-hour').textContent   = fmt(s.alerts_last_hour || 0);
     document.getElementById('last-update').textContent =
       'Last updated ' + new Date().toLocaleTimeString();
+  } catch(e) {}
+
+  try {
+    // Packet rate chart
+    const pr = await fetch('/api/packets/rate').then(r => r.json());
+    if (pktChart) {
+      pktChart.data.labels = pr.labels;
+      pktChart.data.datasets[0].data = pr.values;
+      pktChart.update('none');
+    }
+    const rate = pr.current_rate || 0;
+    document.getElementById('s-rate').textContent = rate + ' pkt/s';
+    document.getElementById('pkt-rate-badge').textContent = rate + ' pkt/s';
   } catch(e) {}
 
   try {
