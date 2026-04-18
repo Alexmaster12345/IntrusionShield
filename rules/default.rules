@@ -1,0 +1,11 @@
+# IntrusionShield default rules
+# Format: action proto src_ip src_port -> dst_ip dst_port (options)
+#
+# Built-in signatures are always loaded from detection/signatures.go.
+# Add custom rules here.
+
+# Example: alert on HTTP access to /admin
+# alert tcp any any -> any 80 (msg:"HTTP /admin access"; content:"/admin"; nocase; sid:2000001; rev:1; severity:2)
+
+# Example: detect nmap OS fingerprint probe
+# alert tcp any any -> any any (msg:"Possible nmap OS fingerprint"; flags:FPU; sid:2000002; rev:1; severity:2)

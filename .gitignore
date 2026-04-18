@@ -1,0 +1,15 @@
+# Build artifacts
+intrusion-shield
+*.pcap
+*.log
+
+# Config with secrets
+config.json
+config.local.json
+
+# Capture output
+captures/
+logs/
+
+# Go
+vendor/
