@@ -29,6 +29,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="IntrusionShield — Network IDS")
     parser.add_argument("-config", default="config.json", help="path to config file")
     parser.add_argument("-iface", default="", help="network interface (overrides config)")
+    parser.add_argument("-pcap", default="", help="read from pcap file instead of live capture")
     parser.add_argument("-verbose", action="store_true", help="print each packet")
     parser.add_argument("-no-db", dest="no_db", action="store_true", help="disable PostgreSQL")
     args = parser.parse_args()
@@ -39,7 +40,8 @@ def main() -> None:
 
     _setup_logging(cfg.log_file, cfg.log_level)
     logger = logging.getLogger(__name__)
-    logger.info("IntrusionShield starting — interface=%s", cfg.interface)
+    mode = f"offline={args.pcap}" if args.pcap else f"interface={cfg.interface}"
+    logger.info("IntrusionShield starting — %s", mode)
 
     # --- Storage ---
     db = None
@@ -64,7 +66,7 @@ def main() -> None:
 
     # --- Capture ---
     sniffer = Sniffer(cfg)
-    sniffer.start()
+    sniffer.start(offline=args.pcap)
 
     stop_event = threading.Event()
 
@@ -80,6 +82,10 @@ def main() -> None:
     total_alerts = 0
 
     while not stop_event.is_set():
+        # In offline mode, exit once the sniffer thread finishes and queue is empty
+        if args.pcap and not sniffer._thread.is_alive() and sniffer.packet_queue.empty():
+            break
+
         # Drain packet queue
         try:
             pkt = sniffer.packet_queue.get(timeout=0.1)
