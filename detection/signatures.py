@@ -17,7 +17,7 @@ def default_signatures():
 
         Rule(id=4, action="alert", protocol="TCP", src_ip="any", src_port="any",
              dst_ip="any", dst_port="22",
-             msg="Possible SSH brute force", severity=3, sid=1000004),
+             msg="Possible SSH brute force", flags="S", severity=3, sid=1000004),
 
         Rule(id=5, action="alert", protocol="TCP", src_ip="any", src_port="any",
              dst_ip="any", dst_port="21",
