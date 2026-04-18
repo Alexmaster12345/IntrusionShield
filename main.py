@@ -31,6 +31,7 @@ def main() -> None:
     parser.add_argument("-iface", default="", help="network interface (overrides config)")
     parser.add_argument("-pcap", default="", help="read from pcap file instead of live capture")
     parser.add_argument("-verbose", action="store_true", help="print each packet")
+    parser.add_argument("-rate", type=float, default=10.0, help="max packets printed per second in verbose mode (default: 10)")
     parser.add_argument("-no-db", dest="no_db", action="store_true", help="disable PostgreSQL")
     args = parser.parse_args()
 
@@ -79,6 +80,8 @@ def main() -> None:
     logger.info("Pipeline running — press Ctrl+C to stop")
     total_packets = 0
     total_alerts = 0
+    _print_interval = 1.0 / args.rate if args.rate > 0 else 0
+    _last_print = 0.0
 
     while not stop_event.is_set():
         # In offline mode, exit once the sniffer thread finishes and queue is empty
@@ -94,7 +97,10 @@ def main() -> None:
         total_packets += 1
 
         if args.verbose:
-            print_metadata(pkt)
+            now = time.time()
+            if now - _last_print >= _print_interval:
+                print_metadata(pkt)
+                _last_print = now
 
         engine.inspect(pkt)
         anomaly.observe(pkt)
